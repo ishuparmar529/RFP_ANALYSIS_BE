@@ -1,0 +1,26 @@
+[project]
+name = "rfp-be"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beanie>=1.29.0",
+    "faiss-cpu>=1.10.0",
+    "fastapi>=0.115.8",
+    "langchain>=0.3.19",
+    "langchain-community>=0.3.18",
+    "langchain-core>=0.3.35",
+    "langchain-openai>=0.3.7",
+    "langchain-pinecone>=0.2.3",
+    "langchain-tests>=0.3.12",
+    "openai>=1.58.1",
+    "pinecone[asyncio,grpc]>=5.4.2",
+    "pydantic>=2.10.6",
+    "pypdf>=5.3.0",
+    "python-docx>=1.1.2",
+    "python-dotenv>=1.0.1",
+    "python-multipart>=0.0.20",
+    "tiktoken>=0.9.0",
+    "uvicorn>=0.34.0",
+]
