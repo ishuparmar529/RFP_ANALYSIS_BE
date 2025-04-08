@@ -1,0 +1,43 @@
+# Core FastAPI dependencies
+fastapi==0.103.1
+uvicorn==0.23.2
+
+# OpenAI API client for GPT integration
+openai==1.5.0
+
+# Environment variable management
+python-dotenv==1.0.0
+
+# PDF, DOCX, XLSX, and text extraction
+pypdf2==3.0.1
+python-docx==0.8.11
+pandas==2.0.3
+openpyxl==3.1.2
+
+# Tokenization for document chunking
+tiktoken==0.5.1
+
+# Sentence embeddings & Vector search
+sentence-transformers==2.2.2
+chromadb==0.4.15  # For storing vector embeddings
+
+# Hugging Face Hub (Fix for cached_download issue)
+huggingface_hub==0.14.1  # Downgrade to a compatible version
+
+# Typing support for structured APIs
+pydantic==2.4.2
+
+
+# For handling HTTP requests
+httpx==0.25.1
+
+# Static file serving (compatible version)
+starlette==0.27.0  # Fixes conflict with FastAPI 0.103.1
+
+# Logging and debugging tools
+loguru==0.7.2
+
+
+python-multipart==0.0.6
+
+
