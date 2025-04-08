@@ -1,12 +1,14 @@
 import os
 import logging
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Form, Query
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from datetime import datetime, timedelta, date
+from typing import Optional, List
 from sqlalchemy.orm import sessionmaker
 from database import engine, get_db
 import shutil
@@ -40,6 +42,9 @@ class QueryRequest(BaseModel):
     project_id: int
     # use_rag: bool
 
+
+    
+
 class DeleteFileRequest(BaseModel):
     project_id: int
     file_id: int
@@ -57,6 +62,9 @@ if not FOLDER_PATH.exists():
     FOLDER_PATH.mkdir(parents=True, exist_ok=True)
 elif not FOLDER_PATH.is_dir():
     raise ValueError(f"Upload path exists but is not a directory: {FOLDER_PATH}")
+
+
+
 
 # --- SESSION MANAGEMENT ENDPOINTS ---
 @app.post("/new-session/")
@@ -263,6 +271,7 @@ async def generate_response(request: QueryRequest, db = Depends(get_db)):
         extracted_docs = []  # List to store documents data
 
         document = db.query(Document).filter(Document.project_id == request.project_id).all()
+        project = db.query(Project).filter(Project.id == request.project_id).first()
         if not document:
             raise HTTPException(status_code=404, detail="No documents uploaded in the current project.")
         
@@ -293,8 +302,16 @@ async def generate_response(request: QueryRequest, db = Depends(get_db)):
             if rag_refined_response:
                 custom_prompt = FINAL_CONSOLIDATION_PROMPT.format(extracted_data, request.user_query, storyboarding_response, rag_refined_response)
                 final_response = query_gpt("Generate final response.", custom_prompt)
-                return JSONResponse(content={"final_response": final_response}, status_code=200)
-            
+
+                try:
+                    chat_history = ChatHistory(message=request.user_query, response=final_response, project_id=request.project_id, project_name=project.name)
+                    db.add(chat_history)
+                    db.commit()
+                    db.refresh(chat_history)
+                    return JSONResponse(content={"final_response": final_response}, status_code=200)
+                except Exception as err:
+                    return HTTPException(status_code=404, detail=str(err))
+
             else:
                 return JSONResponse(content={"message": "There is no response of storyboarding using rag system from ai."}, status_code=200)
 
@@ -332,6 +349,45 @@ async def list_files(project_id: int, db= Depends(get_db)):
     
     except Exception as err:
         return HTTPException(status_code=500, detail=str(err))
+    
+@app.get("/chat-history/")
+async def chat_history(filter: Optional[str] = Query(None, description="Filter type: today, yesterday, last_7_days, this_month, custom"),
+start_date: Optional[date] = Query(None, description="Start date for custom filter"),
+end_date: Optional[date] = Query(None, description="End date for custom filter"),
+db=Depends(get_db)):
+    try:
+        query = db.query(ChatHistory)
+
+        now = datetime.utcnow().date()
+
+        if filter == "today":
+            query = query.filter(ChatHistory.created_at >= datetime.combine(now, datetime.min.time()),
+                                ChatHistory.created_at <= datetime.combine(now, datetime.max.time()))
+
+        elif filter == "yesterday":
+            yesterday = now - timedelta(days=1)
+            query = query.filter(ChatHistory.created_at >= datetime.combine(yesterday, datetime.min.time()),
+                                ChatHistory.created_at <= datetime.combine(yesterday, datetime.max.time()))
+
+        elif filter == "last_7_days":
+            last_7 = now - timedelta(days=7)
+            query = query.filter(ChatHistory.created_at >= last_7)
+
+        elif filter == "this_month":
+            first_day = now.replace(day=1)
+            query = query.filter(ChatHistory.created_at >= first_day)
+
+        elif filter == "custom" and start_date and end_date:
+            query = query.filter(ChatHistory.created_at >= datetime.combine(start_date, datetime.min.time()),
+                                ChatHistory.created_at <= datetime.combine(end_date, datetime.max.time()))
+
+        chat_history_result = query.order_by(ChatHistory.created_at.desc()).all()
+        chat_history = jsonable_encoder(chat_history_result)
+        return JSONResponse(content={"result": chat_history}, status_code = 200)
+    
+    except Exception as err:
+        return HTTPException(status_code=500, detail=str(err))
+
     
 # --- PROJECT DELETION ENDPOINT ---
 @app.delete("/project-delete/")
