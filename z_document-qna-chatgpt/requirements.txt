@@ -11,9 +11,10 @@ python-dotenv==1.0.0
 # PDF, DOCX, XLSX, and text extraction
 pypdf2==3.0.1
 python-docx==0.8.11
-pandas==2.0.3
+pandas
 openpyxl==3.1.2
 
+numpy
 # Tokenization for document chunking
 tiktoken==0.5.1
 
