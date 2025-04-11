@@ -95,6 +95,17 @@ class DocumentManager:
         
         return current_session.get_relevant_context(query, top_k=top_k)
     
+    def get_relevant_context_for_rag_chat(self, query: str, top_k: int = 30) -> str:
+        """Retrieve relevant document chunks using vector search."""
+        try:
+            current_session = self.get_current_session()
+        except HTTPException as e:
+            rfp_session = RfpSession(session_id = None)
+            # print("rfp_session",rfp_session)
+            return rfp_session.get_relevant_context_for_rag_chat(query, top_k=top_k)
+       
+        return current_session.get_relevant_context_for_rag_chat(query, top_k=top_k)
+    
     def get_relevant_context_without_session(self, query: str, top_k: int = 30) -> str:
         """Retrieve relevant document chunks using vector search."""
         rfp_session = RfpSession()

@@ -15,7 +15,7 @@ from starlette.requests import Request
 from fastapi_sso import GoogleSSO
 from database import engine, get_db
 import shutil
-from models import Project, Document, ChatHistory, User
+from models import Project, Document, ChatHistory, User, RagChatHistory
 from document_manager import DocumentManager
 from qa_utils import query_gpt
 from prompts import RFP_SYNOPSIS_PROMPT, DEPENDENCIES_PROMPT, RESPONSE_STRUCTURE_PROMPT, STORYBOARDING_PROMPT, RESPONSE_TO_STORYBOARDING_PROMPT, FINAL_CONSOLIDATION_PROMPT
@@ -58,6 +58,10 @@ class UserRequest(BaseModel):
 class DeleteFileRequest(BaseModel):
     project_id: int
     file_id: int
+
+class UserRequestRag(BaseModel):
+    user_query: str
+    top_results: Optional[int] = 5
 
 app.add_middleware(
     CORSMiddleware,
@@ -375,6 +379,47 @@ async def generate_response(request: QueryRequest, db = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=e)
     
+
+# --- KMS CHAT MEANS CHAT WITH RAG ENDPOINT ---  
+@app.post("/rag-chat/")
+async def chat_with_rag(request: UserRequestRag, db=Depends(get_db)):
+    try:
+        rag_result = doc_manager.get_relevant_context_for_rag_chat(request.user_query, request.top_results)
+ 
+        if not rag_result:
+            return JSONResponse(content={"result": "There are no match from your query."}, status_code=200)
+       
+        chunks = rag_result.split("\n\n---\n\n")
+        content_list = []
+ 
+        for chunk in chunks:
+            # Split the chunk at the first newline to skip the score
+            lines = chunk.split("\n", 1)
+            if len(lines) == 2:
+                content_list.append(lines[1].strip())  # Take everything after the score
+ 
+        content_json_string = json.dumps(content_list)
+ 
+        rag_chat_history = RagChatHistory(query=request.user_query, response=content_json_string)
+        db.add(rag_chat_history)
+        db.commit()
+        db.refresh(rag_chat_history)
+ 
+        return JSONResponse(content={"result": content_list}, status_code=200)
+   
+    except Exception as err:
+        return HTTPException(status_code=500, detail=str(err)) 
+
+# --- CHAT HISTORY WITH RAG SYSTEM ENDPOINT ---
+@app.get("/rag-chat-history/")
+async def get_rag_chat_history(db=Depends(get_db)):
+    try:
+        chat_result = db.query(RagChatHistory).order_by(RagChatHistory.created_at.asc()).all()
+        encoded_chat_history = jsonable_encoder(chat_result)
+        return JSONResponse(content={"result": encoded_chat_history}, status_code=200)
+    except Exception as err:
+        return HTTPException(status_code=500, detail=str(err))
+ 
 
 # --- GETTING LATEST CREATED PROJECT ---
 @app.get("/get-projects/")

@@ -187,3 +187,39 @@ class RfpSession:
                 for pair in self.qa_history.qa_pairs
             ]
         }
+
+    def get_relevant_context_for_rag_chat(self, query: str, top_k: int) -> str:
+        """
+        Retreive relevant result from the vector db with rag for the rag chat.
+        """
+ 
+        results = self.vector_search.search_for_rag_chat(
+            query_texts=[query],    
+            n_results=top_k,
+            include=["documents", "distances"]
+        )
+ 
+        documents = results["documents"][0]  # List of chunks
+        distances = results["distances"][0]  # List of floats
+ 
+        # Pair and sort by similarity score (1 - distance)
+        scored_chunks = sorted(
+            zip(documents, distances),
+            key=lambda x: x[1]  # lower distance = more relevant
+        )
+ 
+        final_chunks = []
+        token_count = 0
+ 
+        for chunk, distance in scored_chunks:
+            tokens = self.encoder.encode(chunk)
+            if token_count + len(tokens) > self.MAX_ALLOWED_TOKENS:
+                break
+            token_count += len(tokens)
+            similarity = 1 - distance
+            final_chunks.append((chunk, similarity))
+ 
+        # Nicely format output
+        return "\n\n---\n\n".join(
+            [f"🔹 Score: {round(score, 3)}\n{chunk}" for chunk, score in final_chunks]
+        )

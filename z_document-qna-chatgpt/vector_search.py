@@ -50,6 +50,13 @@ class VectorSearch:
         # Extract and return retrieved documents
         return results['documents'][0] if results['documents'] else []
 
+    def search_for_rag_chat(self, query_texts, n_results=5, include=["documents"]):
+        return self.collection.query(
+            query_texts=query_texts,
+            n_results=n_results,
+            include=include
+        )
+    
     def remove_document(self, doc_id: str):
         """
         Remove all stored embeddings related to a specific document ID.
