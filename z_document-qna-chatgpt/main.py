@@ -14,6 +14,7 @@ from passlib.context import CryptContext
 from starlette.requests import Request
 from fastapi_sso import GoogleSSO
 from database import engine, get_db
+import json
 import shutil
 from models import Project, Document, ChatHistory, User, RagChatHistory
 from document_manager import DocumentManager
