@@ -20,6 +20,7 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     projects = relationship("Project", back_populates="user")
     chat_history = relationship("ChatHistory", back_populates="user")
+    rag_chat_history = relationship("RagChatHistory", back_populates="user")
 
 class Project(Base):
     __tablename__ = "projects"
@@ -27,7 +28,7 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     created_at = Column(DateTime,  default=lambda: datetime.now(timezone.utc))
-    user_id = Column(Integer, ForeignKey("user.id"))
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
 
     chat_history = relationship("ChatHistory", back_populates="project")
     documents = relationship("Document", back_populates="project")
@@ -46,7 +47,7 @@ class ChatHistory(Base):
     __tablename__ = "chat_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id"))
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
     message = Column(String)
     response = Column(String)
     project_id = Column(Integer, ForeignKey("projects.id"))
@@ -56,3 +57,13 @@ class ChatHistory(Base):
     
     project = relationship("Project", back_populates="chat_history")
     user = relationship("User", back_populates="chat_history")
+
+class RagChatHistory(Base):
+    __tablename__ = "rag_chat_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
+    query = Column(String)
+    response = Column(String)
+
+    user = relationship("User", back_populates="rag_chat_history")

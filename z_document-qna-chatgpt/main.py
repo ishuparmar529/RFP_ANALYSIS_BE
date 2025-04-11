@@ -10,9 +10,12 @@ from fastapi.encoders import jsonable_encoder
 from datetime import datetime, timedelta, date
 from typing import Optional, List
 from sqlalchemy.orm import sessionmaker
+from passlib.context import CryptContext
+from starlette.requests import Request
+from fastapi_sso import GoogleSSO
 from database import engine, get_db
 import shutil
-from models import Project, Document, ChatHistory
+from models import Project, Document, ChatHistory, User
 from document_manager import DocumentManager
 from qa_utils import query_gpt
 from prompts import RFP_SYNOPSIS_PROMPT, DEPENDENCIES_PROMPT, RESPONSE_STRUCTURE_PROMPT, STORYBOARDING_PROMPT, RESPONSE_TO_STORYBOARDING_PROMPT, FINAL_CONSOLIDATION_PROMPT
@@ -24,8 +27,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -40,10 +47,13 @@ doc_manager = DocumentManager()
 class QueryRequest(BaseModel):
     user_query: str
     project_id: int
-    # use_rag: bool
+    chat_id: Optional[int] = None
 
-
-    
+class UserRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    sso: bool
 
 class DeleteFileRequest(BaseModel):
     project_id: int
@@ -64,7 +74,41 @@ elif not FOLDER_PATH.is_dir():
     raise ValueError(f"Upload path exists but is not a directory: {FOLDER_PATH}")
 
 
+pwd_context = CryptContext(schemes=['bcrypt'], deprecated="auto") # FOR HASHING THE PASSWORD.
+sso_context_google = GoogleSSO(CLIENT_ID, CLIENT_SECRET, "http://localhost:8000/sso/callback") # FOR LOGIN FROM THE GOOGLE THROGH SSO
 
+# --- SINGUP AND LOGIN FROM SSO ENPOINT ---
+@app.get("/sso/login/")
+async def sso_login():
+    async with sso_context_google:
+        return await sso_context_google.get_login_redirect()
+
+# --- HANDLING CALLBACK AFTER LOGIN FROM SSO ENDPOINT ---
+@app.get("/sso/callback/")
+async def sso_callback(request: Request):
+    try:
+        async with sso_context_google:
+            user = await sso_context_google.verify_and_process(request)
+            user_data = jsonable_encoder(user)
+            return JSONResponse(content={"result": user_data}, status_code=200)
+        
+    except Exception as err:
+        return HTTPException(status_code=500, detail=str(err))
+    
+
+# --- USER REGISTER ENDPOINT ---
+@app.get("/signup/")
+async def user_register(request:UserRequest, db=Depends(get_db)):
+    try:
+        exist_user = db.query(User).filter(User.email == request.email).first()
+        if exist_user:
+            return HTTPException(status_code=409, detail="User is already exist. Please try to login.")
+
+        hash_password = pwd_context.hash(request.password)
+        
+        user = User(name = request.name, email = request.email, password = hash_password, )
+    except Exception as err:
+        return HTTPException(status_code=500, detail=str(err))
 
 # --- SESSION MANAGEMENT ENDPOINTS ---
 @app.post("/new-session/")
@@ -304,6 +348,16 @@ async def generate_response(request: QueryRequest, db = Depends(get_db)):
                 final_response = query_gpt("Generate final response.", custom_prompt)
 
                 try:
+                    if request.chat_id:
+                        db.query(ChatHistory).filter(ChatHistory.id == request.chat_id).update({
+                            "message": request.user_query,
+                            "response": final_response,
+                            "project_id": request.project_id,
+                            "project_name": project.name
+                        })
+                        db.commit()
+                        return JSONResponse(content={"final_response": final_response}, status_code=200)
+                    
                     chat_history = ChatHistory(message=request.user_query, response=final_response, project_id=request.project_id, project_name=project.name)
                     db.add(chat_history)
                     db.commit()
@@ -351,12 +405,12 @@ async def list_files(project_id: int, db= Depends(get_db)):
         return HTTPException(status_code=500, detail=str(err))
     
 @app.get("/chat-history/")
-async def chat_history(filter: Optional[str] = Query(None, description="Filter type: today, yesterday, last_7_days, this_month, custom"),
+async def chat_history(project_id:int, filter: Optional[str] = Query(None, description="Filter type: today, yesterday, last_7_days, this_month, custom"),
 start_date: Optional[date] = Query(None, description="Start date for custom filter"),
 end_date: Optional[date] = Query(None, description="End date for custom filter"),
 db=Depends(get_db)):
     try:
-        query = db.query(ChatHistory)
+        query = db.query(ChatHistory).filter(ChatHistory.project_id == project_id)
 
         now = datetime.utcnow().date()
 
